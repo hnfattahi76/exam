@@ -19,6 +19,10 @@ package.json
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
 
+tsconfing.app.ts
+compilerOptions
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+
 
 test.tsx
 
