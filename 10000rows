@@ -1,0 +1,123 @@
+import React from "react";
+
+type VirtualListProps<T> = {
+  items: readonly T[];
+  height?: number; // viewport height
+  rowHeight?: number; // fixed row height
+  overscan?: number;
+  renderRow?: (item: T, index: number) => React.ReactNode;
+};
+
+export default function Scroll() {
+  const items = React.useMemo(
+    () => Array.from({ length: 10_000 }, (_, i) => `Item ${i + 1}`),
+    []
+  );
+
+  return (
+    <div style={{ padding: 16 }}>
+      <h3 style={{ margin: "0 0 12px" }}>Virtual list (no package, TS)</h3>
+
+      <VirtualList
+        items={items}
+        height={500}
+        rowHeight={44}
+        overscan={10}
+        renderRow={(item, index) => (
+          <div style={{ width: "100%", display: "flex", gap: 8 }}>
+            <b style={{ width: 70 }}>#{index}</b>
+            <span>{item}</span>
+          </div>
+        )}
+      />
+    </div>
+  );
+}
+
+function VirtualList<T>({
+  items,
+  height = 500,
+  rowHeight = 44,
+  overscan = 8,
+  renderRow,
+}: VirtualListProps<T>) {
+  const [scrollTop, setScrollTop] = React.useState<number>(0);
+  const rafId = React.useRef<number | null>(null);
+
+  const totalHeight = items.length * rowHeight;
+  const visibleCount = Math.ceil(height / rowHeight);
+
+  const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+  const endIndex = Math.min(
+    items.length - 1,
+    startIndex + visibleCount + overscan * 2
+  );
+
+  const offsetY = startIndex * rowHeight;
+  const slice = items.slice(startIndex, endIndex + 1);
+  
+
+  const onScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    const next = e.currentTarget.scrollTop;
+    if (rafId.current != null) return;
+
+    rafId.current = window.requestAnimationFrame(() => {
+        console.log(next);
+        
+      setScrollTop(next);
+      rafId.current = null;
+    });
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (rafId.current != null) window.cancelAnimationFrame(rafId.current);
+    };
+  }, []);
+
+  return (
+    <div
+      onScroll={onScroll}
+      style={{
+        height,
+        overflow: "auto",
+        position: "relative",
+        border: "1px solid #ddd",
+        borderRadius: 8,
+      }}
+    >
+      {/* spacer to preserve native scroll height */}
+      <div style={{ height: totalHeight, position: "relative" }}>
+        {/* only render the visible window */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            transform: `translateY(${offsetY}px)`,
+          }}
+        >
+          {slice.map((item, i) => {
+            const index = startIndex + i;
+            return (
+              <div
+                key={index}
+                style={{
+                  height: rowHeight,
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 12px",
+                  borderBottom: "1px solid #eee",
+                  boxSizing: "border-box",
+                }}
+              >
+                {renderRow ? renderRow(item, index) : String(item)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
