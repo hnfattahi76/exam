@@ -1,0 +1,131 @@
+import { useMemo, useState } from "react";
+import DOMPurify from "dompurify";
+
+type Mode = "strip-all" | "allow-basic";
+
+const DEFAULT_INPUT = `<h2>سلام!</h2>
+<p>این یک <b>تست</b> است.</p>
+<p>لینک: <a href="https://example.com" target="_blank">example</a></p>
+<hr/>
+<p>حالا یک XSS تست:</p>
+<img src="x" onerror="alert('XSS!')" />
+<script>alert('XSS via script tag')</script>
+`;
+
+function escapeHtml(text: string): string {
+
+    return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+export default function XSS() {
+  const [input, setInput] = useState<string>(DEFAULT_INPUT);
+  const [mode, setMode] = useState<Mode>("allow-basic");
+
+  const sanitizedHtml = useMemo(() => {
+    if (mode === "strip-all") {
+      return DOMPurify.sanitize(input, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+    }
+    return DOMPurify.sanitize(input, {
+      ALLOWED_TAGS: ["b", "i", "em", "strong", "p", "br", "h1", "h2", "h3", "ul", "ol", "li", "a", "hr", "code", "pre", "span"],
+      ALLOWED_ATTR: ["href", "target", "rel"],
+      ALLOW_UNKNOWN_PROTOCOLS: false,
+    });
+  }, [input, mode]);
+
+  const rawEscapedForDisplay = useMemo(() => escapeHtml(input), [input]);
+
+  return (
+    <div className="page">
+      <header className="header">
+        <h1>Project 1 — XSS Lab (React + TS)</h1>
+        <p className="sub">
+          ورودی را وارد کن؛ خروجی‌ها را در حالت خام، ناامن، و امن ببین.
+        </p>
+      </header>
+
+      <section className="grid">
+        <div className="card">
+          <div className="cardTitle">
+            <h2>۱) ورودی کاربر</h2>
+            <div className="controls">
+              <label>
+                حالت Sanitization:
+                <select value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
+                  <option value="allow-basic">Allowlist (Basic HTML)</option>
+                  <option value="strip-all">Strip All (Text only)</option>
+                </select>
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setInput(DEFAULT_INPUT)}
+                className="btn"
+              >
+                Reset نمونه
+              </button>
+              <button
+                type="button"
+                onClick={() => setInput("")}
+                className="btn"
+              >
+                پاک کردن
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            className="textarea"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            spellCheck={false}
+          />
+
+          <div className="hint">
+            Payload تست:
+            <code>{`<img src="x" onerror="alert('XSS!')" />`}</code>
+            یا
+            <code>{`<a href="javascript:alert(1)">click</a>`}</code>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2>۲) نمایش متن خام (امن)</h2>
+          <p className="note">
+            اینجا ما متن را escape می‌کنیم تا دقیقاً «همان چیزی که کاربر تایپ کرده» دیده شود.
+          </p>
+          <pre className="pre">
+            <code dangerouslySetInnerHTML={{ __html: rawEscapedForDisplay }} />
+          </pre>
+        </div>
+
+        <div className="card danger">
+          <h2>۳) رندر HTML ناامن (⚠️)</h2>
+          <p className="note">
+            این بخش عمداً ناامن است: هر HTMLی که کاربر بده رندر می‌شود.
+          </p>
+          <div className="preview" dangerouslySetInnerHTML={{ __html: input }} />
+        </div>
+
+        <div className="card safe">
+          <h2>۴) رندر HTML امن (Sanitized ✅)</h2>
+          <p className="note">
+            اینجا قبل از رندر، ورودی را sanitize می‌کنیم تا event handlerها، script و URLهای خطرناک حذف شوند.
+          </p>
+          <div className="preview" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
+
+          <details className="details">
+            <summary>نمایش HTML پس از sanitize</summary>
+            <pre className="pre">
+              <code>{sanitizedHtml}</code>
+            </pre>
+          </details>
+        </div>
+      </section>
+    </div>
+  );
+}
