@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 
 type Product = {
   id: number;
@@ -9,25 +9,68 @@ type Product = {
   category: string;
   image: string;
 };
+
+type AppErrorType = "NETWORK" | "TIMEOUT" | "ABORTED" | "HTTP" | "VALIDATION" | "UNKNOWN";
+
+type AppError = {
+  type: AppErrorType;
+  message: string;
+  status?: number;
+  details?: unknown;
+};
+
+function toAppError(err: unknown): AppError {
+  // Abort
+  if (err instanceof Error && (err.name === "CanceledError" || err.name === "AbortError")) {
+    return { type: "ABORTED", message: "Request aborted" };
+  }
+
+  if (axios.isAxiosError(err)) {
+    const e = err as AxiosError<any>;
+
+    // Timeout
+    if (e.code === "ECONNABORTED") {
+      return { type: "TIMEOUT", message: "Request timeout" };
+    }
+
+    // Network
+    if (!e.response) {
+      return { type: "NETWORK", message: "Network error", details: e.message };
+    }
+
+    const status = e.response.status;
+    const data = e.response.data;
+
+    return {
+      type: status === 400 ? "VALIDATION" : "HTTP",
+      status,
+      message: data?.error || data?.message || `Request failed (${status})`,
+      details: data,
+    };
+  }
+
+  if (err instanceof Error) {
+    return { type: "UNKNOWN", message: err.message || "Unknown error" };
+  }
+
+  return { type: "UNKNOWN", message: "Unknown error", details: err };
+}
+
 const api = axios.create({
   baseURL: "https://fakestoreapi.com",
   timeout: 10000,
 });
-
-function getErrorMessage(err: unknown): string {
-  if (axios.isCancel(err)) return "درخواست لغو شد";
-
-  if (axios.isAxiosError(err)) {
-    return err.response?.data?.message || "خطای سرور";
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    throw toAppError(err);
   }
-
-  return "خطای ناشناخته";
-}
+);
 
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
 
   function addProduct() {
     const payload = {
@@ -38,7 +81,7 @@ export default function Products() {
       category: "string",
       image: "http://example.com",
     };
-    setError("");
+    setError(null);
     setIsLoading(true);
     api
       .post<Product>("/products",payload)
@@ -46,7 +89,7 @@ export default function Products() {
         setProducts([...products,res.data])
       })
       .catch((err) => {
-        setError(getErrorMessage(err));
+        setError(err);
       })
       .finally(() => {
         setIsLoading(false);
@@ -57,7 +100,7 @@ export default function Products() {
     const controller = new AbortController();
     (async () => {
       setIsLoading(true);
-      setError("");
+      setError(null);
       try {
         const res = await api.get<Product[]>("/products", {
           signal: controller.signal,
@@ -65,7 +108,7 @@ export default function Products() {
         setProducts(res.data);
       } catch (error) {
         if (!controller.signal.aborted) {
-          setError(getErrorMessage(error));
+          setError(error as AppError);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -83,7 +126,7 @@ export default function Products() {
   }, []);
 
   if (isLoading) return <div>Loading ...</div>;
-  if (error) return <div>{error}</div>;
+  if (error) return <div>{error.message}</div>;
   return (
     <>
       <button style={{ marginBottom: "30px" }} onClick={addProduct}>
